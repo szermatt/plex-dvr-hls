@@ -12,6 +12,7 @@ import (
 
 	"github.com/duncanleo/plex-dvr-hls/config"
 	"github.com/gin-gonic/gin"
+	"github.com/google/shlex"
 )
 
 func Stream(c *gin.Context) {
@@ -29,6 +30,50 @@ func Stream(c *gin.Context) {
 
 	c.Header("Content-Type", "video/mp2t")
 
+	var process *exec.Cmd
+	if channel.Exec != "" {
+		process, err = execCommand(channel.Exec)
+		if err != nil {
+			log.Println(err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+	} else {
+		process = ffmpegCommand(&channel, transcode)
+	}
+	outPipe, err := process.StdoutPipe()
+	if err != nil {
+		log.Println(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	process.Stderr = os.Stdout
+
+	err = process.Start()
+	if err != nil {
+		log.Println(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	c.Stream(func(w io.Writer) bool {
+		_, err := io.Copy(w, outPipe)
+
+		if err != nil {
+			log.Println(err)
+			return true
+		}
+
+		if process.Process != nil {
+			process.Process.Kill()
+		}
+		return true
+	})
+
+}
+
+func ffmpegCommand(channel *config.Channel, transcode string) *exec.Cmd {
 	var ffmpegArgs []string
 
 	if channel.ProxyConfig != nil {
@@ -146,39 +191,16 @@ func Stream(c *gin.Context) {
 		"pipe:1",
 	)
 
-	var ffmpegProcess = exec.Command(
+	return exec.Command(
 		"ffmpeg",
 		ffmpegArgs...,
 	)
+}
 
-	outPipe, err := ffmpegProcess.StdoutPipe()
+func execCommand(cmdLine string) (*exec.Cmd, error) {
+	cmdArray, err := shlex.Split(cmdLine)
 	if err != nil {
-		log.Println(err)
-		c.Status(http.StatusInternalServerError)
-		return
+		return nil, err
 	}
-
-	ffmpegProcess.Stderr = os.Stdout
-
-	err = ffmpegProcess.Start()
-	if err != nil {
-		log.Println(err)
-		c.Status(http.StatusInternalServerError)
-		return
-	}
-
-	c.Stream(func(w io.Writer) bool {
-		_, err := io.Copy(w, outPipe)
-
-		if err != nil {
-			log.Println(err)
-			return true
-		}
-
-		if ffmpegProcess.Process != nil {
-			ffmpegProcess.Process.Kill()
-		}
-		return true
-	})
-
+	return exec.Command(cmdArray[0], cmdArray[1:]...), nil
 }
