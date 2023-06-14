@@ -28,8 +28,6 @@ func init() {
 }
 
 func Discover(c *gin.Context) {
-	var deviceID = rand.Int63n(90000000-10000000) + 10000000
-
 	var host = c.Request.Host
 
 	c.JSON(
@@ -40,7 +38,7 @@ func Discover(c *gin.Context) {
 			FirmwareName:    "hdhomeruntc_atsc",
 			TunerCount:      len(config.Channels) * 3,
 			FirmwareVersion: "20150826",
-			DeviceID:        fmt.Sprintf("%d", deviceID),
+			DeviceID:        fmt.Sprintf("%d", config.Cfg.DeviceID),
 			DeviceAuth:      "test1234",
 			BaseURL:         fmt.Sprintf("http://%s", host),
 			LineupURL:       fmt.Sprintf("http://%s/lineup.json", host),

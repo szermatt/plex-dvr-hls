@@ -1,4 +1,5 @@
 {
   "name": "Amazing Tuner",
+  "deviceID": 12345678
   "encoder_profile": "cpu"
 }
