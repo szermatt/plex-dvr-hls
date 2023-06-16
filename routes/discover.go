@@ -29,16 +29,16 @@ func init() {
 
 func Discover(c *gin.Context) {
 	var host = c.Request.Host
-
+	var cfg = config.Cfg()
 	c.JSON(
 		http.StatusOK,
 		DVR{
-			FriendlyName:    config.Cfg.Name,
+			FriendlyName:    cfg.Name,
 			ModelNumber:     "HDTC-2US",
 			FirmwareName:    "hdhomeruntc_atsc",
-			TunerCount:      len(config.Channels) * 3,
+			TunerCount:      len(config.Channels()) * 3,
 			FirmwareVersion: "20150826",
-			DeviceID:        fmt.Sprintf("%d", config.Cfg.DeviceID),
+			DeviceID:        fmt.Sprintf("%d", cfg.DeviceID),
 			DeviceAuth:      "test1234",
 			BaseURL:         fmt.Sprintf("http://%s", host),
 			LineupURL:       fmt.Sprintf("http://%s/lineup.json", host),

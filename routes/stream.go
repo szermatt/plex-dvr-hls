@@ -23,7 +23,7 @@ func Stream(c *gin.Context) {
 		return
 	}
 
-	var channel = config.Channels[channelID-1]
+	var channel = config.GetChannel(channelID - 1)
 	var transcode = c.Query("transcode")
 
 	log.Printf("[STREAM] Starting '%s'\n", channel.Name)
@@ -31,6 +31,7 @@ func Stream(c *gin.Context) {
 	c.Header("Content-Type", "video/mp2t")
 
 	var process *exec.Cmd
+	cfg := config.Cfg()
 	if channel.Exec != "" {
 		process, err = execCommand(channel.Exec)
 		if err != nil {
@@ -39,7 +40,7 @@ func Stream(c *gin.Context) {
 			return
 		}
 	} else {
-		process = ffmpegCommand(&channel, transcode)
+		process = ffmpegCommand(cfg, channel, transcode)
 	}
 	outPipe, err := process.StdoutPipe()
 	if err != nil {
@@ -73,7 +74,7 @@ func Stream(c *gin.Context) {
 
 }
 
-func ffmpegCommand(channel *config.Channel, transcode string) *exec.Cmd {
+func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string) *exec.Cmd {
 	var ffmpegArgs []string
 
 	if channel.ProxyConfig != nil {
@@ -84,7 +85,7 @@ func ffmpegCommand(channel *config.Channel, transcode string) *exec.Cmd {
 		)
 	}
 
-	switch config.Cfg.GetEncoderProfile() {
+	switch cfg.GetEncoderProfile() {
 	case config.EncoderProfileVAAPI:
 		ffmpegArgs = append(
 			ffmpegArgs,
@@ -116,7 +117,7 @@ func ffmpegCommand(channel *config.Channel, transcode string) *exec.Cmd {
 			"copy",
 		)
 	} else {
-		switch config.Cfg.GetEncoderProfile() {
+		switch cfg.GetEncoderProfile() {
 		case config.EncoderProfileVideoToolbox:
 			ffmpegArgs = append(
 				ffmpegArgs,

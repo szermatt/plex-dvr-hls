@@ -20,7 +20,7 @@ func Lineup(c *gin.Context) {
 
 	var host = c.Request.Host
 
-	for index, channel := range config.Channels {
+	for index, channel := range config.Channels() {
 		channelLineups = append(
 			channelLineups,
 			ChannelLineup{

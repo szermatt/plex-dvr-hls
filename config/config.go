@@ -39,8 +39,12 @@ func (c Config) GetEncoderProfile() EncoderProfile {
 }
 
 var (
-	Cfg Config
+	cfg Config
 )
+
+func Cfg() *Config {
+	return &cfg
+}
 
 func init() {
 	file, err := os.Open("config.json")
@@ -51,7 +55,7 @@ func init() {
 	defer file.Close()
 
 	var decoder = json.NewDecoder(file)
-	err = decoder.Decode(&Cfg)
+	err = decoder.Decode(&cfg)
 
 	if err != nil {
 		log.Fatal(err)

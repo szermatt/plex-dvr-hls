@@ -33,7 +33,8 @@ func main() {
 	r.GET("/stream/:channelID", routes.Stream)
 	r.GET("/xmltv", routes.XMLTV)
 
-	log.Printf("Starting '%s' tuner with encoder profile %s\n", config.Cfg.Name, config.Cfg.GetEncoderProfile())
+	cfg := config.Cfg()
+	log.Printf("Starting '%s' tuner with encoder profile %s\n", cfg.Name, cfg.GetEncoderProfile())
 
 	r.Run(fmt.Sprintf(":%d", port))
 }
