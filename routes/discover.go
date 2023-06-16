@@ -2,9 +2,7 @@ package routes
 
 import (
 	"fmt"
-	"math/rand"
 	"net/http"
-	"time"
 
 	"github.com/duncanleo/plex-dvr-hls/config"
 	"github.com/gin-gonic/gin"
@@ -21,10 +19,6 @@ type DVR struct {
 	BaseURL         string `json:"BaseURL"`
 	LineupURL       string `json:"LineupURL"`
 	Manufacturer    string `json:"Manufacturer"`
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 func Discover(c *gin.Context) {
