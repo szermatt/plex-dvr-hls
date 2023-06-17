@@ -24,13 +24,17 @@ type DVR struct {
 func Discover(c *gin.Context) {
 	var host = c.Request.Host
 	var cfg = config.Cfg()
+	var tunerCount = cfg.TunerCount
+	if tunerCount == 0 {
+		tunerCount = len(config.Channels()) * 3
+	}
 	c.JSON(
 		http.StatusOK,
 		DVR{
 			FriendlyName:    cfg.Name,
 			ModelNumber:     "HDTC-2US",
 			FirmwareName:    "hdhomeruntc_atsc",
-			TunerCount:      len(config.Channels()) * 3,
+			TunerCount:      tunerCount,
 			FirmwareVersion: "20150826",
 			DeviceID:        fmt.Sprintf("%d", cfg.DeviceID),
 			DeviceAuth:      "test1234",
