@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"sync"
 )
 
 type ProxyConfig struct {
@@ -21,29 +22,48 @@ type Channel struct {
 }
 
 var (
-	channels []Channel
+	channels      []Channel
+	channelsMutex sync.Mutex
 )
 
 func Channels() []Channel {
+	channelsMutex.Lock()
+	defer channelsMutex.Unlock()
+
 	return channels
 }
 
 func GetChannel(index int) *Channel {
+	channelsMutex.Lock()
+	defer channelsMutex.Unlock()
+
 	return &channels[index]
 }
 
 func init() {
-	file, err := os.Open("channels.json")
+	err := updateChannels()
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func updateChannels() error {
+	file, err := os.Open("channels.json")
+	if err != nil {
+		return err
 	}
 
 	defer file.Close()
 
 	var decoder = json.NewDecoder(file)
-	err = decoder.Decode(&channels)
-
+	var newchannels []Channel
+	err = decoder.Decode(&newchannels)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	channelsMutex.Lock()
+	defer channelsMutex.Unlock()
+	channels = newchannels
+	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"sync"
 )
 
 type EncoderProfile string
@@ -39,14 +40,25 @@ func (c Config) GetEncoderProfile() EncoderProfile {
 }
 
 var (
-	cfg Config
+	cfg      *Config
+	cfgMutex sync.Mutex
 )
 
 func Cfg() *Config {
-	return &cfg
+	cfgMutex.Lock()
+	defer cfgMutex.Unlock()
+
+	return cfg
 }
 
 func init() {
+	err := updateConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func updateConfig() error {
 	file, err := os.Open("config.json")
 	if err != nil {
 		log.Fatal(err)
@@ -55,9 +67,15 @@ func init() {
 	defer file.Close()
 
 	var decoder = json.NewDecoder(file)
-	err = decoder.Decode(&cfg)
+	var newcfg Config
+	err = decoder.Decode(&newcfg)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	cfgMutex.Lock()
+	defer cfgMutex.Unlock()
+	cfg = &newcfg
+	return nil
 }
