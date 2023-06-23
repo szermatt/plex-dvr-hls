@@ -66,20 +66,19 @@ func Stream(c *gin.Context) {
 		if err != nil {
 			log.Printf("[STREAM] '%s' error %s\n", channel.Name, err)
 		}
-		outPipe.Close()
-		if cmd.Process != nil {
-			if pgid, err := syscall.Getpgid(cmd.Process.Pid); err == nil {
-				syscall.Kill(-pgid, syscall.SIGKILL)
-			} else {
-				cmd.Process.Kill()
-			}
-		}
-		cmd.Wait()
-		log.Printf("[STREAM] '%s' process done\n", channel.Name)
-
-		return true
+		return false
 	})
 
+	outPipe.Close()
+	if cmd.Process != nil {
+		if pgid, err := syscall.Getpgid(cmd.Process.Pid); err == nil {
+			syscall.Kill(-pgid, syscall.SIGKILL)
+		} else {
+			cmd.Process.Kill()
+		}
+		cmd.Wait()
+	}
+	log.Printf("[STREAM] '%s' process done\n", channel.Name)
 }
 
 func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string) *exec.Cmd {
