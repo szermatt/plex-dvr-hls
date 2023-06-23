@@ -23,7 +23,14 @@ func main() {
 		}
 	}
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		SkipPaths: []string{
+			"/capability",
+			"/discover.json",
+			"/lineup_status.json",
+		},
+	}))
 	r.SetTrustedProxies(nil)
 
 	r.GET("/capability", routes.Capability)
