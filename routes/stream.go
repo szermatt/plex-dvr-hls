@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/duncanleo/plex-dvr-hls/config"
 	"github.com/gin-gonic/gin"
@@ -30,28 +31,29 @@ func Stream(c *gin.Context) {
 
 	c.Header("Content-Type", "video/mp2t")
 
-	var process *exec.Cmd
+	var cmd *exec.Cmd
 	cfg := config.Cfg()
 	if channel.Exec != "" {
-		process, err = execCommand(channel.Exec)
+		cmd, err = execCommand(channel.Exec)
 		if err != nil {
 			log.Println(err)
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 	} else {
-		process = ffmpegCommand(cfg, channel, transcode)
+		cmd = ffmpegCommand(cfg, channel, transcode)
 	}
-	outPipe, err := process.StdoutPipe()
+	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Println(err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	process.Stderr = os.Stdout
+	cmd.Stderr = os.Stdout
 
-	err = process.Start()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	err = cmd.Start()
 	if err != nil {
 		log.Println(err)
 		c.Status(http.StatusInternalServerError)
@@ -62,13 +64,19 @@ func Stream(c *gin.Context) {
 		_, err := io.Copy(w, outPipe)
 
 		if err != nil {
-			log.Println(err)
-			return true
+			log.Printf("[STREAM] '%s' error %s\n", channel.Name, err)
 		}
+		outPipe.Close()
+		if cmd.Process != nil {
+			if pgid, err := syscall.Getpgid(cmd.Process.Pid); err == nil {
+				syscall.Kill(-pgid, syscall.SIGKILL)
+			} else {
+				cmd.Process.Kill()
+			}
+		}
+		cmd.Wait()
+		log.Printf("[STREAM] '%s' process done\n", channel.Name)
 
-		if process.Process != nil {
-			process.Process.Kill()
-		}
 		return true
 	})
 
