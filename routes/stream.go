@@ -60,14 +60,26 @@ func Stream(c *gin.Context) {
 		return
 	}
 
-	c.Stream(func(w io.Writer) bool {
-		_, err := io.Copy(w, outPipe)
-
-		if err != nil {
-			log.Printf("[STREAM] '%s' error %s\n", channel.Name, err)
+	buf := make([]byte, 4*1024)
+	clientDisconnected := c.Stream(func(w io.Writer) bool {
+		nbytes, err := outPipe.Read(buf)
+		if err == io.EOF {
+			log.Printf("[STREAM] '%s' end of stream\n", channel.Name)
+			return false
+		} else if err != nil {
+			log.Printf("[STREAM] '%s' read error: %s\n", channel.Name, err)
+			return false
 		}
-		return false
+		if nbytes > 0 {
+			_, err := w.Write(buf[0:nbytes])
+			if err != nil {
+				log.Printf("[STREAM] '%s' write error %s\n", channel.Name, err)
+				return false
+			}
+		}
+		return true
 	})
+	log.Printf("[STREAM] '%s' done. client disconnected=%v\n", channel.Name, clientDisconnected)
 
 	outPipe.Close()
 	if cmd.Process != nil {
@@ -78,7 +90,6 @@ func Stream(c *gin.Context) {
 		}
 		cmd.Wait()
 	}
-	log.Printf("[STREAM] '%s' process done\n", channel.Name)
 }
 
 func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string) *exec.Cmd {
