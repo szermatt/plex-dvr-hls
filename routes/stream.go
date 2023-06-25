@@ -10,11 +10,97 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/duncanleo/plex-dvr-hls/config"
 	"github.com/gin-gonic/gin"
 	"github.com/google/shlex"
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+var (
+	bytesStreamedCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "bytes_streamed_total",
+		Help: "Bytes sent to a stream.",
+	}, []string{"channel"})
+
+	streamStartCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "stream_count",
+		Help: "Number of streams started.",
+	}, []string{"channel"})
+
+	streamEndCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "stream_end_count",
+		Help: "Number of streams ended.",
+	}, []string{"channel", "end"})
+
+	activeStreamsGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "active_stream_count",
+		Help: "Number of streams currently active.",
+	}, []string{"channel"})
+
+	streamDurationHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "stream_duration_s",
+		Help: "How long streams lasted, in seconds, from the first bytes sent to the last bytes sent.",
+	}, []string{"channel", "end"})
+)
+
+func init() {
+	prometheus.MustRegister(bytesStreamedCounter)
+	prometheus.MustRegister(streamStartCounter)
+	prometheus.MustRegister(streamEndCounter)
+	prometheus.MustRegister(activeStreamsGauge)
+	prometheus.MustRegister(streamDurationHist)
+}
+
+// streamCounters updates the prometheus metrics for a stream.
+//
+// It is created by newStreamCounter(), which must be followed by a
+// defer.counters.finished() to guarantee that counters start and end
+// match and are reported properly.
+//
+// Before a stream end, streamCounters.end must be updated with a
+// label that describes the reason why the stream ended. Ends not
+// labelled will be reported as 'Unknown'.
+type streamCounters struct {
+	channel    string
+	end        string
+	bytes      prometheus.Counter
+	firstBytes time.Time
+	lastBytes  time.Time
+}
+
+// newStreamCounter reports the start of a stream and creates a streamCounters.
+func newStreamCounter(channel string) *streamCounters {
+	streamStartCounter.WithLabelValues(channel).Inc()
+	activeStreamsGauge.WithLabelValues(channel).Inc()
+	return &streamCounters{
+		channel: channel,
+		// 'Unknown' shouldn't ever be sent; always set the end before
+		// returning from Stream().
+		end:   "Unknown",
+		bytes: bytesStreamedCounter.WithLabelValues(channel),
+	}
+}
+
+// incBytes increments the number of bytes reported for the stream.
+func (c *streamCounters) incBytes(nbytes int) {
+	now := time.Now()
+	if c.firstBytes.IsZero() {
+		c.firstBytes = now
+	}
+	c.lastBytes = now
+	c.bytes.Add(float64(nbytes))
+}
+
+// finished reports the end of the stream to prometheus
+func (c *streamCounters) finished() {
+	activeStreamsGauge.WithLabelValues(c.channel).Dec()
+	if !c.firstBytes.IsZero() {
+		streamDurationHist.WithLabelValues(c.channel, c.end).Observe(c.lastBytes.Sub(c.firstBytes).Seconds())
+	}
+	streamEndCounter.WithLabelValues(c.channel, c.end).Inc()
+}
 
 func Stream(c *gin.Context) {
 	var channelIDStr = c.Param("channelID")
@@ -27,6 +113,9 @@ func Stream(c *gin.Context) {
 	var channel = config.GetChannel(channelID - 1)
 	var transcode = c.Query("transcode")
 
+	counters := newStreamCounter(channel.Name)
+	defer counters.finished()
+
 	log.Printf("[STREAM] Starting '%s'\n", channel.Name)
 
 	c.Header("Content-Type", "video/mp2t")
@@ -36,6 +125,7 @@ func Stream(c *gin.Context) {
 	if channel.Exec != "" {
 		cmd, err = execCommand(channel.Exec)
 		if err != nil {
+			counters.end = "ConfigurationError"
 			log.Println(err)
 			c.Status(http.StatusInternalServerError)
 			return
@@ -45,6 +135,7 @@ func Stream(c *gin.Context) {
 	}
 	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
+		counters.end = "CmdPipeError"
 		log.Println(err)
 		c.Status(http.StatusInternalServerError)
 		return
@@ -55,6 +146,7 @@ func Stream(c *gin.Context) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	err = cmd.Start()
 	if err != nil {
+		counters.end = "CmdStartError"
 		log.Println(err)
 		c.Status(http.StatusInternalServerError)
 		return
@@ -64,21 +156,28 @@ func Stream(c *gin.Context) {
 	clientDisconnected := c.Stream(func(w io.Writer) bool {
 		nbytes, err := outPipe.Read(buf)
 		if err == io.EOF {
+			counters.end = "EOF"
 			log.Printf("[STREAM] '%s' end of stream\n", channel.Name)
 			return false
 		} else if err != nil {
+			counters.end = "ReadError"
 			log.Printf("[STREAM] '%s' read error: %s\n", channel.Name, err)
 			return false
 		}
 		if nbytes > 0 {
 			_, err := w.Write(buf[0:nbytes])
 			if err != nil {
+				counters.end = "WriteError"
 				log.Printf("[STREAM] '%s' write error %s\n", channel.Name, err)
 				return false
 			}
+			counters.incBytes(nbytes)
 		}
 		return true
 	})
+	if clientDisconnected {
+		counters.end = "Disconnected"
+	}
 	log.Printf("[STREAM] '%s' done. client disconnected=%v\n", channel.Name, clientDisconnected)
 
 	outPipe.Close()
