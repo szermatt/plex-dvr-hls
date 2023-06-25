@@ -29,6 +29,7 @@ func main() {
 			"/capability",
 			"/discover.json",
 			"/lineup_status.json",
+			"/metrics",
 		},
 	}))
 	r.SetTrustedProxies(nil)
@@ -39,6 +40,7 @@ func main() {
 	r.GET("/lineup_status.json", routes.LineupStatus)
 	r.GET("/stream/:channelID", routes.Stream)
 	r.GET("/xmltv", routes.XMLTV)
+	r.GET("/metrics", routes.Metrics)
 
 	cfg := config.Cfg()
 	log.Printf("Starting '%s' tuner with encoder profile %s\n", cfg.Name, cfg.GetEncoderProfile())
