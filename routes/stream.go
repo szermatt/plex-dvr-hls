@@ -30,6 +30,14 @@ func Stream(c *gin.Context) {
 	counters := newStreamCounters(channel.Name)
 	defer counters.finished()
 
+	streaming := false
+	fail := func(cause string, err error) {
+		counters.atEnd(cause)
+		log.Printf("[STREAM] '%s' %s: %s\n", channel.Name, cause, err)
+		if !streaming {
+			c.Status(http.StatusInternalServerError)
+		}
+	}
 	log.Printf("[STREAM] Starting '%s'\n", channel.Name)
 
 	c.Header("Content-Type", "video/mp2t")
@@ -39,9 +47,7 @@ func Stream(c *gin.Context) {
 	if channel.Exec != "" {
 		cmd, err = execCommand(channel.Exec)
 		if err != nil {
-			counters.atEnd("ConfigurationError")
-			log.Println(err)
-			c.Status(http.StatusInternalServerError)
+			fail("ConfigurationError", err)
 			return
 		}
 	} else {
@@ -49,9 +55,7 @@ func Stream(c *gin.Context) {
 	}
 	outPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		counters.atEnd("CmdPipeError")
-		log.Println(err)
-		c.Status(http.StatusInternalServerError)
+		fail("CmdPipeError", err)
 		return
 	}
 
@@ -60,29 +64,25 @@ func Stream(c *gin.Context) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	err = cmd.Start()
 	if err != nil {
-		counters.atEnd("CmdStartError")
-		log.Println(err)
-		c.Status(http.StatusInternalServerError)
+		fail("CmdStartError", err)
 		return
 	}
 
+	streaming = true
 	buf := make([]byte, 4*1024)
 	clientDisconnected := c.Stream(func(w io.Writer) bool {
 		nbytes, err := outPipe.Read(buf)
 		if err == io.EOF {
-			counters.atEnd("EOF")
-			log.Printf("[STREAM] '%s' end of stream\n", channel.Name)
+			fail("EOF", err)
 			return false
 		} else if err != nil {
-			counters.atEnd("ReadError")
-			log.Printf("[STREAM] '%s' read error: %s\n", channel.Name, err)
+			fail("ReadError", err)
 			return false
 		}
 		if nbytes > 0 {
 			_, err := w.Write(buf[0:nbytes])
 			if err != nil {
-				counters.atEnd("WriteError")
-				log.Printf("[STREAM] '%s' write error %s\n", channel.Name, err)
+				fail("WriteError", err)
 				return false
 			}
 			counters.incBytes(nbytes)
