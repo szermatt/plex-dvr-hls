@@ -50,6 +50,7 @@ func Stream(c *gin.Context) {
 			fail("ConfigurationError", err)
 			return
 		}
+		execCmd.Stderr = os.Stdout
 	}
 	ffCmd := ffmpegCommand(cfg, channel, transcode)
 	ffCmd.Stderr = os.Stdout
