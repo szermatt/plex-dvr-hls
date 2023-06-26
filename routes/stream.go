@@ -170,6 +170,8 @@ func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string
 			ffmpegArgs,
 			"-c:v",
 			"copy",
+			"-c:a",
+			"copy",
 		)
 	} else {
 		switch cfg.GetEncoderProfile() {
@@ -206,12 +208,15 @@ func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string
 			)
 			break
 		}
+		ffmpegArgs = append(
+			ffmpegArgs,
+			"-b:a",
+			"256k",
+		)
 	}
 
 	ffmpegArgs = append(
 		ffmpegArgs,
-		"-b:a",
-		"256k",
 		"-copyinkf",
 		"-metadata",
 		"service_provider=AMAZING",
