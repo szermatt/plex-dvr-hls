@@ -42,31 +42,61 @@ func Stream(c *gin.Context) {
 
 	c.Header("Content-Type", "video/mp2t")
 
-	var cmd *exec.Cmd
+	var execCmd *exec.Cmd
 	cfg := config.Cfg()
 	if channel.Exec != "" {
-		cmd, err = execCommand(channel.Exec)
+		execCmd, err = execCommand(channel.Exec)
 		if err != nil {
 			fail("ConfigurationError", err)
 			return
 		}
-	} else {
-		cmd = ffmpegCommand(cfg, channel, transcode)
 	}
-	outPipe, err := cmd.StdoutPipe()
+	ffCmd := ffmpegCommand(cfg, channel, transcode)
+	ffCmd.Stderr = os.Stdout
+
+	if execCmd != nil {
+		r, w := io.Pipe()
+		execCmd.Stdout = w
+		ffCmd.Stdin = r
+		defer w.Close()
+	}
+
+	outPipe, err := ffCmd.StdoutPipe()
 	if err != nil {
 		fail("CmdPipeError", err)
 		return
 	}
 
-	cmd.Stderr = os.Stdout
+	if execCmd != nil {
+		execCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		err = execCmd.Start()
+		if err != nil {
+			fail("ExecStartError", err)
+			return
+		}
+		defer func() {
+			if execCmd.Process != nil {
+				if pgid, err := syscall.Getpgid(execCmd.Process.Pid); err == nil {
+					syscall.Kill(-pgid, syscall.SIGKILL)
+				} else {
+					execCmd.Process.Kill()
+				}
+			}
+			execCmd.Wait()
+		}()
+	}
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	err = cmd.Start()
+	err = ffCmd.Start()
 	if err != nil {
-		fail("CmdStartError", err)
+		fail("FFMpegStartError", err)
 		return
 	}
+	defer func() {
+		if ffCmd.Process != nil {
+			ffCmd.Process.Kill()
+		}
+		ffCmd.Wait()
+	}()
 
 	streaming = true
 	buf := make([]byte, 4*1024)
@@ -93,16 +123,6 @@ func Stream(c *gin.Context) {
 		counters.atEnd("Disconnected")
 	}
 	log.Printf("[STREAM] '%s' done. client disconnected=%v\n", channel.Name, clientDisconnected)
-
-	outPipe.Close()
-	if cmd.Process != nil {
-		if pgid, err := syscall.Getpgid(cmd.Process.Pid); err == nil {
-			syscall.Kill(-pgid, syscall.SIGKILL)
-		} else {
-			cmd.Process.Kill()
-		}
-		cmd.Wait()
-	}
 }
 
 func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string) *exec.Cmd {
@@ -135,10 +155,14 @@ func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string
 		)
 	}
 
+	input := channel.URL
+	if channel.Exec != "" {
+		input = "-"
+	}
 	ffmpegArgs = append(
 		ffmpegArgs,
 		"-i",
-		channel.URL,
+		input,
 	)
 
 	if channel.DisableTranscode {
