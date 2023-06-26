@@ -57,11 +57,12 @@ func init() {
 // label that describes the reason why the stream ended. Ends not
 // labelled will be reported as 'Unknown'.
 type streamCounters struct {
-	channel    string
-	endCause   string
-	bytes      prometheus.Counter
-	firstBytes time.Time
-	lastBytes  time.Time
+	channel     string
+	endCause    string
+	bytes       prometheus.Counter
+	firstBytes  time.Time
+	lastBytes   time.Time
+	finishedRun bool
 }
 
 // newStreamCounters reports the start of a stream and creates a streamCounters.
@@ -80,6 +81,7 @@ func newStreamCounters(channel string) *streamCounters {
 // atEnd sets the end cause
 func (c *streamCounters) atEnd(cause string) {
 	c.endCause = cause
+	c.finished()
 }
 
 // incBytes increments the number of bytes reported for the stream.
@@ -94,6 +96,11 @@ func (c *streamCounters) incBytes(nbytes int) {
 
 // finished reports the end of the stream to prometheus
 func (c *streamCounters) finished() {
+	if c.finishedRun {
+		return
+	}
+
+	c.finishedRun = true
 	activeStreamsGauge.WithLabelValues(c.channel).Dec()
 	if !c.firstBytes.IsZero() {
 		streamDurationHist.WithLabelValues(c.channel, c.endCause).Observe(c.lastBytes.Sub(c.firstBytes).Seconds())
