@@ -30,11 +30,29 @@ var (
 	streamDurationHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "stream_duration_s",
 		Help: "How long streams lasted, in seconds, from the first bytes sent to the last bytes sent.",
-	}, []string{"channel", "end"})
-
-	streamEndDurationHist = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name: "stream_end_duration_s",
-		Help: "How long after the last bytes were sent did the stream end.",
+		Buckets: []float64{1.0, 2.0, 3.0, 5.0, 10.0, 15.0, 30.0, 45.0,
+			(time.Minute).Seconds(),
+			(2 * time.Minute).Seconds(),
+			(3 * time.Minute).Seconds(),
+			(5 * time.Minute).Seconds(),
+			(10 * time.Minute).Seconds(),
+			(15 * time.Minute).Seconds(),
+			(30 * time.Minute).Seconds(),
+			(45 * time.Minute).Seconds(),
+			(time.Hour).Seconds(),
+			(time.Hour + 15*time.Minute).Seconds(),
+			(time.Hour + 30*time.Minute).Seconds(),
+			(time.Hour + 45*time.Minute).Seconds(),
+			(2 * time.Hour).Seconds(),
+			(2*time.Hour + 15*time.Minute).Seconds(),
+			(2*time.Hour + 30*time.Minute).Seconds(),
+			(2*time.Hour + 45*time.Minute).Seconds(),
+			(3 * time.Hour).Seconds(),
+			(3*time.Hour + 15*time.Minute).Seconds(),
+			(3*time.Hour + 30*time.Minute).Seconds(),
+			(3*time.Hour + 45*time.Minute).Seconds(),
+			(4 * time.Hour).Seconds(),
+		},
 	}, []string{"channel", "end"})
 )
 
@@ -44,7 +62,6 @@ func init() {
 	prometheus.MustRegister(streamEndCounter)
 	prometheus.MustRegister(activeStreamsGauge)
 	prometheus.MustRegister(streamDurationHist)
-	prometheus.MustRegister(streamEndDurationHist)
 }
 
 // streamCounters updates the prometheus metrics for a stream.
@@ -104,7 +121,6 @@ func (c *streamCounters) finished() {
 	activeStreamsGauge.WithLabelValues(c.channel).Dec()
 	if !c.firstBytes.IsZero() {
 		streamDurationHist.WithLabelValues(c.channel, c.endCause).Observe(c.lastBytes.Sub(c.firstBytes).Seconds())
-		streamEndDurationHist.WithLabelValues(c.channel, c.endCause).Observe(time.Since(c.lastBytes).Seconds())
 	}
 	streamEndCounter.WithLabelValues(c.channel, c.endCause).Inc()
 }
