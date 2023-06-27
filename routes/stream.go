@@ -55,11 +55,14 @@ func Stream(c *gin.Context) {
 	ffCmd := ffmpegCommand(cfg, channel, transcode)
 	ffCmd.Stderr = os.Stdout
 
+	var execCmdOut *io.PipeWriter
 	if execCmd != nil {
 		r, w := io.Pipe()
+		defer w.Close()
+
+		execCmdOut = w
 		execCmd.Stdout = w
 		ffCmd.Stdin = r
-		defer w.Close()
 	}
 
 	outPipe, err := ffCmd.StdoutPipe()
@@ -83,6 +86,9 @@ func Stream(c *gin.Context) {
 					execCmd.Process.Kill()
 				}
 			}
+			// execCmd.Stdout must be closed before calling Wait(), because
+			// otherwise Wait() waits it to happen and never returns.
+			execCmdOut.Close()
 			execCmd.Wait()
 		}()
 	}
