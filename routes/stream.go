@@ -135,6 +135,15 @@ func Stream(c *gin.Context) {
 func ffmpegCommand(cfg *config.Config, channel *config.Channel, transcode string) *exec.Cmd {
 	var ffmpegArgs []string
 
+	if gin.Mode() == gin.ReleaseMode {
+		ffmpegArgs = append(
+			ffmpegArgs,
+			"-hide_banner",
+			"-nostats",
+			"-loglevel",
+			"info",
+		)
+	}
 	if channel.ProxyConfig != nil {
 		ffmpegArgs = append(
 			ffmpegArgs,
